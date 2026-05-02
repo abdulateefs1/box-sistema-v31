@@ -735,22 +735,29 @@ async function buildDetalniy(zakaz, model) {
   }
 
   const groups = {};
+  const keyPart = (v) => String(v || '').trim().toLowerCase();
   boxes.forEach(b => {
     if (b.type === 'simple') {
-      const key = b.model + '|' + b.color + '|' + b.zakaz;
-      if (!groups[key]) groups[key] = { model: b.model, color: b.color, zakaz: b.zakaz, boxes: [], sizes: {} };
+      const key = keyPart(b.model) + '|' + keyPart(b.color) + '|' + keyPart(b.zakaz);
+      if (!groups[key]) groups[key] = { model: String(b.model || '').trim(), color: String(b.color || '').trim(), zakaz: b.zakaz, boxes: [], sizes: {} };
       groups[key].boxes.push(rowToBox(b));
       Object.entries(b.sizes || {}).forEach(([s, q]) => groups[key].sizes[s] = (groups[key].sizes[s] || 0) + q);
     } else {
       (b.items || []).forEach(it => {
-        const key = it.model + '|' + it.color + '|' + b.zakaz;
-        if (!groups[key]) groups[key] = { model: it.model, color: it.color, zakaz: b.zakaz, boxes: [], sizes: {} };
+        const key = keyPart(it.model) + '|' + keyPart(it.color) + '|' + keyPart(b.zakaz);
+        if (!groups[key]) groups[key] = { model: String(it.model || '').trim(), color: String(it.color || '').trim(), zakaz: b.zakaz, boxes: [], sizes: {} };
         if (!groups[key].boxes.find(x => x.uid === b.uid)) groups[key].boxes.push(rowToBox(b));
         Object.entries(it.sizes || {}).forEach(([s, q]) => groups[key].sizes[s] = (groups[key].sizes[s] || 0) + q);
       });
     }
   });
-  return Object.values(groups);
+  return Object.values(groups).sort((a, b) => {
+    const z = String(a.zakaz).localeCompare(String(b.zakaz), undefined, { numeric: true });
+    if (z !== 0) return z;
+    const m = String(a.model).localeCompare(String(b.model));
+    if (m !== 0) return m;
+    return String(a.color).localeCompare(String(b.color));
+  });
 }
 
 app.get('/api/detalniy', requireAuth, async (req, res) => {

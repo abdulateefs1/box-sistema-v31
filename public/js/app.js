@@ -705,10 +705,19 @@ async function loadDetalniy() {
   if (zk) qs.set('zakaz', zk);
   if (md) qs.set('model', md);
   try {
-    const groups = await api('GET', '/api/detalniy?' + qs);
+    const [groups, allBoxes] = await Promise.all([
+      api('GET', '/api/detalniy?' + qs),
+      api('GET', '/api/boxes')
+    ]);
     const div = document.getElementById('det-table');
     if (!groups.length) { div.innerHTML = '<p style="text-align:center;color:#94a3b8;padding:20px">Ombor bo\'sh</p>'; return; }
+    const whBoxes = allBoxes.filter(b => b.status === 'warehouse');
+    const whPieces = whBoxes.reduce((s, b) => s + getBoxTotalPieces(b), 0);
     let html = '<div style="overflow-x:auto"><table class="detalniy-xl"><thead>';
+    html = `<div class="info-row" style="margin-bottom:10px">
+      <span class="info-lbl">Omborda jami karobka</span>
+      <span class="info-val">${whBoxes.length} ta (${whPieces} dona)</span>
+    </div>` + html;
     html += '<tr>';
     html += '<th rowspan="2">Model #</th><th rowspan="2">Color</th><th rowspan="2">Номер заказа</th><th rowspan="2">Спецификации</th><th colspan="' + SIZES.length + '">Размеры</th>';
     html += '<th rowspan="2">Pcs per Carton</th><th rowspan="2">Num of Cartons</th><th rowspan="2">Total pcs</th><th rowspan="2">Multipack</th>';
@@ -784,8 +793,35 @@ async function renderShipments() {
   const c = document.getElementById('page-content');
   c.innerHTML = `<div id="shp-content">Yuklanmoqda...</div>`;
   try {
-    const open = await api('GET', '/api/shipments/open');
-    const allBoxes = await api('GET', '/api/boxes');
+    const [open, allBoxes, allShipments] = await Promise.all([
+      api('GET', '/api/shipments/open'),
+      api('GET', '/api/boxes'),
+      api('GET', '/api/shipments')
+    ]);
+    const closedShipments = (allShipments || []).filter(s => s.status === 'closed');
+    const historyHtml = `
+      <div class="card">
+        <div class="section-title">🕓 Shipment tarixi (${closedShipments.length})</div>
+        <div id="shp-history" style="margin-top:10px">
+          ${closedShipments.length ? closedShipments.map(s => {
+            const snap = Array.isArray(s.snapshot) ? s.snapshot : [];
+            const pcs = snap.reduce((sum, b) => {
+              const t = b.type === 'mix'
+                ? (b.items || []).reduce((a, it) => a + Object.values(it.sizes || {}).reduce((x, y) => x + (parseInt(y, 10) || 0), 0), 0)
+                : Object.values(b.sizes || {}).reduce((x, y) => x + (parseInt(y, 10) || 0), 0);
+              return sum + t;
+            }, 0);
+            const kg = snap.reduce((sum, b) => sum + (parseFloat(b.kg) || 0), 0);
+            const dt = s.closedAt ? new Date(s.closedAt).toLocaleString('uz-UZ') : '—';
+            return `<div class="ship-history-row">
+              <div>
+                <div class="ship-history-title">${esc(s.id)} · ${snap.length} box</div>
+                <div class="ship-history-sub">${dt} · ${kg.toFixed(1)} kg · ${pcs} dona</div>
+              </div>
+            </div>`;
+          }).join('') : '<p style="text-align:center;color:#94a3b8;padding:14px">Hali yopilgan shipment yo\'q</p>'}
+        </div>
+      </div>`;
 
     if (!open) {
       document.getElementById('shp-content').innerHTML = `
@@ -794,7 +830,8 @@ async function renderShipments() {
           <div class="form-group" style="margin-top:12px"><label>Mashina ma'lumoti</label><input type="text" id="shp-truck" placeholder="DAF / 01 A 123 BB"></div>
           <div class="form-group"><label>Izoh</label><input type="text" id="shp-note" placeholder="Ixtiyoriy"></div>
           <button class="btn btn-primary btn-block" id="open-shp">🚛 Ochish</button>
-        </div>`;
+        </div>
+        ${historyHtml}`;
       document.getElementById('open-shp').addEventListener('click', async () => {
         try {
           await api('POST', '/api/shipments/open', {
@@ -834,7 +871,8 @@ async function renderShipments() {
       <div class="card">
         <div class="section-title">🏭 Ombordagi boxlar (${wh.length})</div>
         <div id="shp-wh-list" style="margin-top:10px">${wh.length ? '' : '<p style="text-align:center;color:#94a3b8;padding:14px">Bo\'sh</p>'}</div>
-      </div>`;
+      </div>
+      ${historyHtml}`;
 
     const inList = document.getElementById('shp-in-list');
     const whList = document.getElementById('shp-wh-list');
@@ -896,16 +934,50 @@ async function renderOrders() {
     </div>`;
   document.getElementById('add-order').addEventListener('click', () => openOrderEdit({}));
   try {
-    const list = await api('GET', '/api/orders');
+    const [list, boxes] = await Promise.all([
+      api('GET', '/api/orders'),
+      api('GET', '/api/boxes')
+    ]);
     const div = document.getElementById('orders-list');
     if (!list.length) { div.innerHTML = '<p style="text-align:center;color:#94a3b8;padding:20px">Order yo\'q</p>'; return; }
-    let html = '<div style="overflow-x:auto"><table><thead><tr><th>Model</th><th>Rang</th><th>Barcode</th><th>Miqdor</th><th></th></tr></thead><tbody>';
+    const statsByKey = {};
+    const makeKey = (m, c) => `${String(m || '').trim().toLowerCase()}|${String(c || '').trim().toLowerCase()}`;
+    boxes.forEach(b => {
+      if (b.type === 'mix') {
+        (b.items || []).forEach(it => {
+          const key = makeKey(it.model, it.color);
+          if (!statsByKey[key]) statsByKey[key] = { packed: 0, shipped: 0 };
+          const pcs = Object.values(it.sizes || {}).reduce((s, q) => s + (parseInt(q, 10) || 0), 0);
+          if (['packed', 'warehouse', 'shipping', 'shipped'].includes(b.status)) statsByKey[key].packed += pcs;
+          if (b.status === 'shipped') statsByKey[key].shipped += pcs;
+        });
+      } else {
+        const key = makeKey(b.model, b.color);
+        if (!statsByKey[key]) statsByKey[key] = { packed: 0, shipped: 0 };
+        const pcs = Object.values(b.sizes || {}).reduce((s, q) => s + (parseInt(q, 10) || 0), 0);
+        if (['packed', 'warehouse', 'shipping', 'shipped'].includes(b.status)) statsByKey[key].packed += pcs;
+        if (b.status === 'shipped') statsByKey[key].shipped += pcs;
+      }
+    });
+    let html = '<div style="overflow-x:auto"><table><thead><tr><th>Model</th><th>Rang</th><th>Barcode</th><th>Buyurtma</th><th>Tayyor</th><th>Yuborildi</th><th>Progress</th><th></th></tr></thead><tbody>';
     list.forEach(o => {
+      const st = statsByKey[makeKey(o.model, o.color)] || { packed: 0, shipped: 0 };
+      const progress = o.total > 0 ? Math.min(100, (st.packed / o.total) * 100) : 0;
       html += `<tr>
         <td class="td-bold">${esc(o.model)}</td>
         <td>${esc(o.color)}</td>
         <td style="font-family:monospace">${esc(o.barcode || '—')}</td>
         <td>${o.total}</td>
+        <td>${st.packed}</td>
+        <td>${st.shipped}</td>
+        <td style="min-width:150px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="flex:1;height:8px;background:#e2e8f0;border-radius:999px;overflow:hidden">
+              <div style="height:100%;width:${progress.toFixed(1)}%;background:#16a34a"></div>
+            </div>
+            <span style="font-size:11px;font-weight:700;color:#0f766e">${progress.toFixed(1)}%</span>
+          </div>
+        </td>
         <td>
           <button class="btn btn-ghost btn-sm" data-act="edit-order" data-order='${esc(JSON.stringify(o))}'>✎</button>
           <button class="btn btn-ghost btn-sm" data-act="del-order" data-id="${esc(o.id)}">🗑</button>
