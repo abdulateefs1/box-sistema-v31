@@ -879,6 +879,18 @@ app.get('/api/audit-logs', requireRole('admin'), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+
+// ============== DEBUG ==============
+app.get('/debug/users', async (req, res) => {
+  try {
+      const result = await pool.query('SELECT * FROM users');
+          res.json(result.rows);
+            } catch (err) {
+                res.status(500).json({ error: err.message });
+                  }
+                  });
+                  
+
 // ============== HEALTH ==============
 app.get('/health', async (req, res) => {
   try { await pool.query('SELECT 1'); res.json({ ok: true, env: NODE_ENV }); }
@@ -899,15 +911,7 @@ app.use((err, req, res, next) => {
 
 (async () => {
   try {
-    await initDB();
-app.get('/debug/users', async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM users');
-            res.json(result.rows);
-              } catch (err) {
-                  res.status(500).json({ error: err.message });
-                    }
-                    });
+    await initDB()
 
 
     app.listen(PORT, '0.0.0.0', () => {
