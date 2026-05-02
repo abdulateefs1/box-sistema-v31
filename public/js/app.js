@@ -924,21 +924,5 @@ async function renderProfile() {
   }
 
   showLogin();
-  document.addEventListener('click', (e) => {
-      const btn = e.target.closest('[data-action]');
-        if (!btn) return;
-
-          if (btn.dataset.action === 'login') {
-              e.preventDefault();
-                  doLogin();
-                    }
-                    });
-  })
-  document.addEventListener('submit', (e) => {
-      if (e.target.id === 'loginForm') {
-          e.preventDefault();
-              doLogin();
-                }
-                });
   })
 })();
