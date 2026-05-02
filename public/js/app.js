@@ -408,6 +408,8 @@ async function saveMix() {
 }
 
 // ============== BOXES ==============
+let boxesSelectedZakaz = '';
+
 async function renderBoxes() {
   const c = document.getElementById('page-content');
   c.innerHTML = `
@@ -423,11 +425,38 @@ async function renderBoxes() {
         </select>
         <input type="text" id="f-zakaz" placeholder="Zakaz (masalan: 600)">
       </div>
+      <div id="boxes-zakaz-nav" style="margin-bottom:12px"></div>
       <div id="boxes-list">Yuklanmoqda...</div>
     </div>`;
   document.getElementById('f-status').addEventListener('change', loadBoxes);
-  document.getElementById('f-zakaz').addEventListener('input', loadBoxes);
+  document.getElementById('f-zakaz').addEventListener('input', () => {
+    boxesSelectedZakaz = '';
+    loadBoxes();
+  });
+  boxesSelectedZakaz = '';
   loadBoxes();
+}
+
+function renderZakazChips(boxes) {
+  const nav = document.getElementById('boxes-zakaz-nav');
+  const byZakaz = {};
+  boxes.forEach(b => {
+    const z = String(b.zakaz || '').trim();
+    if (!z) return;
+    if (!byZakaz[z]) byZakaz[z] = { cnt: 0, pieces: 0 };
+    byZakaz[z].cnt += 1;
+    byZakaz[z].pieces += getBoxTotalPieces(b);
+  });
+  const keys = Object.keys(byZakaz).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  if (!keys.length) {
+    nav.innerHTML = '';
+    return;
+  }
+  nav.innerHTML = keys.map(z => {
+    const item = byZakaz[z];
+    const active = boxesSelectedZakaz === z ? 'btn-primary' : 'btn-ghost';
+    return `<button class="btn btn-sm ${active}" data-act="open-zakaz" data-zakaz="${esc(z)}" style="margin:0 6px 6px 0">Zakaz ${esc(z)} · ${item.cnt} box · ${item.pieces} dona</button>`;
+  }).join('');
 }
 
 async function loadBoxes() {
@@ -438,11 +467,21 @@ async function loadBoxes() {
     let list = all;
     if (st !== 'all') list = list.filter(b => b.status === st);
     if (zk) list = list.filter(b => String(b.zakaz).includes(zk));
+    renderZakazChips(list);
+    if (boxesSelectedZakaz) list = list.filter(b => String(b.zakaz) === boxesSelectedZakaz);
     const cont = document.getElementById('boxes-list');
     if (!list.length) { cont.innerHTML = '<p style="text-align:center;color:#94a3b8;padding:20px">Box topilmadi</p>'; return; }
     cont.innerHTML = '';
-    list.slice(0, 100).forEach(b => cont.appendChild(renderBoxCard(b)));
-    if (list.length > 100) {
+    if (boxesSelectedZakaz) {
+      const top = document.createElement('div');
+      top.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px';
+      top.innerHTML = `<div style="font-size:13px;color:#334155;font-weight:700">Zakaz ${esc(boxesSelectedZakaz)} ichidagi boxlar: ${list.length} ta</div>
+        <button class="btn btn-ghost btn-sm" data-act="clear-zakaz">← Barchasi</button>`;
+      cont.appendChild(top);
+    }
+    const max = boxesSelectedZakaz ? list.length : 100;
+    list.slice(0, max).forEach(b => cont.appendChild(renderBoxCard(b)));
+    if (!boxesSelectedZakaz && list.length > 100) {
       const note = document.createElement('p');
       note.style.cssText = 'text-align:center;color:#94a3b8;padding:10px';
       note.textContent = list.length + ' tadan birinchi 100tasi ko\'rsatilgan';
@@ -622,6 +661,18 @@ document.addEventListener('click', async (e) => {
     } else if (act === 'rm-shp-box') {
       await api('POST', '/api/shipments/open/boxes', { boxUid: uid, action: 'remove' });
       toast('✓ Qaytarildi'); renderShipments();
+    } else if (act === 'open-zakaz') {
+      boxesSelectedZakaz = btn.dataset.zakaz || '';
+      loadBoxes();
+    } else if (act === 'clear-zakaz') {
+      boxesSelectedZakaz = '';
+      loadBoxes();
+    } else if (act === 'del-shipment') {
+      const id = btn.dataset.id;
+      showConfirm('Shipmentni o\'chirish', `${id} shipmentini o\'chirasizmi?`, async () => {
+        try { await api('DELETE', '/api/shipments/' + encodeURIComponent(id)); toast('✓ Shipment o\'chirildi'); renderShipments(); }
+        catch (e) { showInfo(e.message); }
+      });
     }
   } catch (err) { showInfo(err.message); }
 });
@@ -773,6 +824,7 @@ async function renderShipments() {
         <div class="info-row"><span class="info-lbl">Boxlar</span><span class="info-val">${inShp.length} ta</span></div>
         <div class="info-row"><span class="info-lbl">Og'irlik</span><span class="info-val">${total.toFixed(1)} kg</span></div>
         <button class="btn btn-success btn-block" id="close-shp" style="margin-top:12px">✓ Shipmentni yopish</button>
+        ${me.role === 'admin' ? `<button class="btn btn-danger btn-block" data-act="del-shipment" data-id="${esc(open.id)}" style="margin-top:8px">🗑 Shipmentni o'chirish (Admin)</button>` : ''}
       </div>
       <div class="card">
         <div class="section-title">📦 Shipmentdagi boxlar (${inShp.length})</div>

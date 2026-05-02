@@ -659,6 +659,43 @@ app.post('/api/shipments/open/close', requireRole('admin', 'storekeeper'), async
   } finally { client.release(); }
 });
 
+app.delete('/api/shipments/:id', requireRole('admin'), async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const id = sanitizeStr(req.params.id, 50);
+    const shpRes = await client.query(`SELECT * FROM shipments WHERE id = $1 FOR UPDATE`, [id]);
+    if (!shpRes.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Shipment topilmadi' });
+    }
+    const shipment = shpRes.rows[0];
+    const boxUids = Array.isArray(shipment.box_uids) ? shipment.box_uids : [];
+
+    if (shipment.status === 'open' && boxUids.length) {
+      const boxRes = await client.query(`SELECT * FROM boxes WHERE uid = ANY($1::text[]) FOR UPDATE`, [boxUids]);
+      for (const b of boxRes.rows) {
+        if (b.status === 'shipping') {
+          const h = Array.isArray(b.status_history) ? b.status_history : [];
+          h.push({ from: 'shipping', to: 'warehouse', at: new Date().toISOString(), by: req.user.username });
+          await client.query(
+            `UPDATE boxes SET status='warehouse', status_history=$1, updated_at=NOW() WHERE uid=$2`,
+            [JSON.stringify(h), b.uid]
+          );
+        }
+      }
+    }
+
+    await client.query(`DELETE FROM shipments WHERE id = $1`, [id]);
+    await client.query('COMMIT');
+    await appendAudit('SHIPMENT_DELETED', req.user, { id }, getClientIP(req));
+    res.json({ ok: true });
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    res.status(500).json({ error: e.message });
+  } finally { client.release(); }
+});
+
 // ============== RANKING ==============
 app.get('/api/ranking', requireAuth, async (req, res) => {
   try {
