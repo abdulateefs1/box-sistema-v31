@@ -75,7 +75,7 @@ async function initDB() {
                                         at TIMESTAMP DEFAULT NOW()
                                             )
                                               `);
-                                              
+
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -182,6 +182,26 @@ async function initDB() {
     throw e;
   } finally {
     client.release();
+
+    await pool.query(`
+        ALTER TABLE sessions
+          ADD COLUMN IF NOT EXISTS ip TEXT
+          `);
+
+          await pool.query(`
+            ALTER TABLE sessions
+              ADD COLUMN IF NOT EXISTS ua TEXT
+              `);
+
+              await pool.query(`
+                ALTER TABLE sessions
+                  ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()
+                  `);
+
+                  await pool.query(`
+                    ALTER TABLE sessions
+                      ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP DEFAULT NOW()
+                      `);
   }
 }
 
