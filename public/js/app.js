@@ -934,4 +934,11 @@ async function renderProfile() {
                     }
                     });
   })
+  document.addEventListener('submit', (e) => {
+      if (e.target.id === 'loginForm') {
+          e.preventDefault();
+              doLogin();
+                }
+                });
+  })
 })();
