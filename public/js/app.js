@@ -462,17 +462,53 @@ function statusBadge(s) {
   return `<span class="badge ${cls}">${lbl}</span>`;
 }
 
+function getBoxTotalPieces(b) {
+  if (b.type === 'mix') {
+    return (b.items || []).reduce((sum, it) => {
+      return sum + Object.values(it.sizes || {}).reduce((s, q) => s + (parseInt(q, 10) || 0), 0);
+    }, 0);
+  }
+  return Object.values(b.sizes || {}).reduce((s, q) => s + (parseInt(q, 10) || 0), 0);
+}
+
+function formatSizesText(sizes) {
+  if (!sizes || typeof sizes !== 'object') return '';
+  const keys = Object.keys(sizes);
+  if (!keys.length) return '';
+  const sorted = keys.sort((a, b) => {
+    const an = parseInt(a, 10);
+    const bn = parseInt(b, 10);
+    if (Number.isNaN(an) || Number.isNaN(bn)) return String(a).localeCompare(String(b));
+    return an - bn;
+  });
+  return sorted
+    .filter(k => (parseInt(sizes[k], 10) || 0) > 0)
+    .map(k => `${esc(k)}:${parseInt(sizes[k], 10) || 0}`)
+    .join(' · ');
+}
+
+function renderBoxSizeDetails(b) {
+  if (b.type === 'mix') {
+    const rows = (b.items || []).map(it => {
+      const t = Object.values(it.sizes || {}).reduce((s, q) => s + (parseInt(q, 10) || 0), 0);
+      return `<div class="box-size-line"><strong>${esc(it.model)} / ${esc(it.color)}</strong> — ${formatSizesText(it.sizes)} <span class="muted">(${t} dona)</span></div>`;
+    }).filter(Boolean);
+    return rows.length ? `<div class="box-size-wrap">${rows.join('')}</div>` : '';
+  }
+  const txt = formatSizesText(b.sizes);
+  return txt ? `<div class="box-size-wrap"><div class="box-size-line"><strong>Razmerlar:</strong> ${txt}</div></div>` : '';
+}
+
 function renderBoxCard(b) {
   const card = document.createElement('div');
   card.className = 'card';
   card.style.marginBottom = '10px';
-  let sizesText = '';
-  let total = 0;
+  let modelLine = '';
+  const total = getBoxTotalPieces(b);
   if (b.type === 'mix') {
-    sizesText = (b.items || []).map(it => esc(it.model) + ' (' + Object.values(it.sizes || {}).reduce((a, c) => a + c, 0) + ')').join(', ');
-    (b.items || []).forEach(it => Object.values(it.sizes || {}).forEach(v => total += v));
+    modelLine = (b.items || []).map(it => esc(it.model) + ' (' + Object.values(it.sizes || {}).reduce((a, c) => a + c, 0) + ')').join(', ');
   } else {
-    total = Object.values(b.sizes || {}).reduce((a, c) => a + c, 0);
+    modelLine = esc(b.model || '') + ' / ' + esc(b.color || '');
   }
   card.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
@@ -481,11 +517,12 @@ function renderBoxCard(b) {
           ${esc(b.zakaz)}/${esc(b.id)}${b.type === 'mix' ? '<span class="mix-tag">MIX</span>' : ''}
         </div>
         <div style="font-size:12px;color:#475569;margin-top:2px">
-          ${b.type === 'mix' ? sizesText : esc(b.model || '') + ' / ' + esc(b.color || '')}
+          ${modelLine}
         </div>
         <div style="font-size:11px;color:#94a3b8;margin-top:6px">
           ${b.kg} kg · ${total} dona · ${esc(b.createdByName || '')}
         </div>
+        ${renderBoxSizeDetails(b)}
       </div>
       <div>${statusBadge(b.status)}</div>
     </div>
@@ -620,15 +657,50 @@ async function loadDetalniy() {
     const groups = await api('GET', '/api/detalniy?' + qs);
     const div = document.getElementById('det-table');
     if (!groups.length) { div.innerHTML = '<p style="text-align:center;color:#94a3b8;padding:20px">Ombor bo\'sh</p>'; return; }
-    let html = '<div style="overflow-x:auto"><table><thead><tr><th>Model</th><th>Rang</th><th>Zakaz</th>';
+    let html = '<div style="overflow-x:auto"><table class="detalniy-xl"><thead>';
+    html += '<tr>';
+    html += '<th rowspan="2">Model #</th><th rowspan="2">Color</th><th rowspan="2">Номер заказа</th><th rowspan="2">Спецификации</th><th colspan="' + SIZES.length + '">Размеры</th>';
+    html += '<th rowspan="2">Pcs per Carton</th><th rowspan="2">Num of Cartons</th><th rowspan="2">Total pcs</th><th rowspan="2">Multipack</th>';
+    html += '<th rowspan="2">Gross Ctn Wt Kgs</th><th rowspan="2">Net Ctn Wt Kgs</th><th rowspan="2">Total Gross Ctn Wt Kgs</th><th rowspan="2">Total Net Ctn Wt Kgs</th><th rowspan="2">Carton Size cm / in</th><th rowspan="2">m3</th>';
+    html += '</tr><tr>';
     SIZES.forEach(s => html += '<th>' + s + '</th>');
-    html += '<th>Jami</th><th>Box</th></tr></thead><tbody>';
+    html += '</tr></thead><tbody>';
+    const totals = { cartons: 0, totalPcs: 0, gross: 0, totalGross: 0, totalNet: 0, m3: 0 };
     groups.forEach(g => {
-      const total = SIZES.reduce((s, sz) => s + (g.sizes[sz] || 0), 0);
-      html += '<tr><td class="td-bold">' + esc(g.model) + '</td><td>' + esc(g.color) + '</td><td>' + esc(g.zakaz) + '</td>';
+      const pcsPerCarton = SIZES.reduce((s, sz) => s + (g.sizes[sz] || 0), 0);
+      const boxCount = g.boxes.length;
+      const totalPcs = pcsPerCarton * boxCount;
+      const gross = g.boxes.reduce((s, b) => s + (parseFloat(b.kg) || 0), 0);
+      const net = Math.max(0, gross - 1.2);
+      const totalGross = gross * boxCount;
+      const totalNet = net * boxCount;
+      const m3 = 0.61 * 0.41 * 0.41 * boxCount;
+      totals.cartons += boxCount;
+      totals.totalPcs += totalPcs;
+      totals.gross += gross;
+      totals.totalGross += totalGross;
+      totals.totalNet += totalNet;
+      totals.m3 += m3;
+      html += '<tr><td class="td-bold">' + esc(g.model) + '</td><td>' + esc(g.color) + '</td><td>' + esc(g.zakaz) + '</td><td></td>';
       SIZES.forEach(sz => html += '<td>' + (g.sizes[sz] || '') + '</td>');
-      html += '<td class="td-bold">' + total + '</td><td>' + g.boxes.length + '</td></tr>';
+      html += '<td class="td-bold">' + pcsPerCarton + '</td>';
+      html += '<td>' + boxCount + '</td>';
+      html += '<td class="td-bold">' + totalPcs + '</td>';
+      html += '<td>1</td>';
+      html += '<td>' + gross.toFixed(2) + '</td>';
+      html += '<td>' + net.toFixed(2) + '</td>';
+      html += '<td>' + totalGross.toFixed(2) + '</td>';
+      html += '<td>' + totalNet.toFixed(2) + '</td>';
+      html += '<td>60*40*40</td>';
+      html += '<td>' + m3.toFixed(3) + '</td></tr>';
     });
+    html += '<tr class="det-total-row"><td class="td-bold">JAMI</td><td></td><td></td><td></td>';
+    SIZES.forEach(sz => {
+      const sizeTotal = groups.reduce((s, g) => s + (g.sizes[sz] || 0), 0);
+      html += '<td class="td-bold">' + (sizeTotal || '') + '</td>';
+    });
+    html += '<td></td><td class="td-bold">' + totals.cartons + '</td><td class="td-bold">' + totals.totalPcs + '</td><td></td>';
+    html += '<td class="td-bold">' + totals.gross.toFixed(2) + '</td><td></td><td class="td-bold">' + totals.totalGross.toFixed(2) + '</td><td class="td-bold">' + totals.totalNet.toFixed(2) + '</td><td></td><td class="td-bold">' + totals.m3.toFixed(3) + '</td></tr>';
     html += '</tbody></table></div>';
     div.innerHTML = html;
   } catch (e) { toast(e.message); }
@@ -704,6 +776,7 @@ async function renderShipments() {
       </div>
       <div class="card">
         <div class="section-title">📦 Shipmentdagi boxlar (${inShp.length})</div>
+        <input type="text" id="shp-search" placeholder="Qidiruv: zakaz, box, model..." style="margin-top:10px">
         <div id="shp-in-list" style="margin-top:10px">${inShp.length ? '' : '<p style="text-align:center;color:#94a3b8;padding:14px">Box yo\'q</p>'}</div>
       </div>
       <div class="card">
@@ -713,8 +786,27 @@ async function renderShipments() {
 
     const inList = document.getElementById('shp-in-list');
     const whList = document.getElementById('shp-wh-list');
-    inShp.forEach(b => inList.appendChild(makeShpRow(b, 'rm-shp-box', 'Qaytarish')));
-    wh.forEach(b => whList.appendChild(makeShpRow(b, 'add-shp-box', '+ Qo\'shish')));
+    const searchInp = document.getElementById('shp-search');
+    const renderLists = () => {
+      const q = (searchInp.value || '').trim().toLowerCase();
+      const hasQ = Boolean(q);
+      const byQuery = (b) => {
+        if (!hasQ) return true;
+        const modelTxt = b.type === 'mix'
+          ? (b.items || []).map(it => `${it.model || ''} ${it.color || ''}`).join(' ')
+          : `${b.model || ''} ${b.color || ''}`;
+        const hay = `${b.zakaz || ''} ${b.id || ''} ${modelTxt}`.toLowerCase();
+        return hay.includes(q);
+      };
+      const inFiltered = inShp.filter(byQuery);
+      const whFiltered = wh.filter(byQuery);
+      inList.innerHTML = inFiltered.length ? '' : '<p style="text-align:center;color:#94a3b8;padding:14px">Mos box topilmadi</p>';
+      whList.innerHTML = whFiltered.length ? '' : '<p style="text-align:center;color:#94a3b8;padding:14px">Mos box topilmadi</p>';
+      inFiltered.forEach(b => inList.appendChild(makeShpRow(b, 'rm-shp-box', 'Qaytarish')));
+      whFiltered.forEach(b => whList.appendChild(makeShpRow(b, 'add-shp-box', '+ Qo\'shish')));
+    };
+    searchInp.addEventListener('input', renderLists);
+    renderLists();
     document.getElementById('close-shp').addEventListener('click', () => {
       showConfirm('Shipment yopish', 'Bu amalni qaytarib bo\'lmaydi.', async () => {
         try { await api('POST', '/api/shipments/open/close', {}); toast('✓ Yopildi'); renderShipments(); }
