@@ -27,9 +27,9 @@
     </div>
     <div class="form-group">
       <label>Parol</label>
-      <input type="password" id="inp-pass" placeholder="••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+      <input type="password" id="inp-pass" placeholder="••••••" autocomplete="current-password">
     </div>
-    <button class="btn btn-primary btn-block" onclick="doLogin()">Kirish →</button>
+    <button class="btn btn-primary btn-block" data-action="login">Kirish →</button>
   </div>
 </div>
 
@@ -52,14 +52,14 @@
           <div class="sb-urole" id="sb-urole">Admin</div>
         </div>
       </div>
-      <button class="btn-logout" onclick="doLogout()">Chiqish</button>
+      <button class="btn-logout" data-action="logout">Chiqish</button>
     </div>
   </aside>
 
   <main id="main-content">
     <div id="topbar">
       <div class="topbar-left">
-        <button id="hamburger" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+        <button id="hamburger" data-action="toggle-sidebar">☰</button>
         <div class="topbar-title" id="tb-title">Bosh sahifa</div>
       </div>
       <div class="topbar-right">
@@ -82,9 +82,9 @@
   <div class="modal-box">
     <div class="modal-title">Box turini tanlang</div>
     <div class="modal-sub">Order: <strong id="m-type-bc"></strong></div>
-    <button class="btn btn-primary btn-block" onclick="chooseSimple()">📦 Oddiy box (1 model)</button>
-    <button class="btn btn-amber btn-block" onclick="chooseMix()">🎨 Mix box (2 model)</button>
-    <button class="btn btn-ghost btn-block" onclick="closeModals()">Bekor qilish</button>
+    <button class="btn btn-primary btn-block" data-action="choose-simple">📦 Oddiy box (1 model)</button>
+    <button class="btn btn-amber btn-block" data-action="choose-mix">🎨 Mix box (2 model)</button>
+    <button class="btn btn-ghost btn-block" data-action="close-modals">Bekor qilish</button>
   </div>
 </div>
 
@@ -113,44 +113,44 @@
       <span>Jami:</span>
       <span class="total-val" id="s-total">0 dona</span>
     </div>
-    <button class="btn btn-primary btn-block" onclick="saveSimple()">✓ Saqlash</button>
-    <button class="btn btn-ghost btn-block" onclick="closeModals()">Bekor</button>
+    <button class="btn btn-primary btn-block" data-action="save-simple">✓ Saqlash</button>
+    <button class="btn btn-ghost btn-block" data-action="close-modals">Bekor</button>
   </div>
 </div>
 
-<!-- Mix STEP 1: 1-model -->
+<!-- Mix STEP 1 -->
 <div class="modal-overlay" id="m-mix-scan1">
   <div class="modal-box">
     <div class="modal-title">Mix Box — 1-model</div>
     <div class="modal-sub">Birinchi modelning barcodeini skanerlang</div>
     <div class="scan-box">
       <div class="scan-icon">📲</div>
-      <input type="text" id="mix-bc1" class="bc-input-modal" placeholder="Barcode..." autocomplete="off" onkeydown="if(event.key==='Enter')mixScan1Done()">
+      <input type="text" id="mix-bc1" class="bc-input-modal" placeholder="Barcode..." autocomplete="off" data-enter="mix-scan1-done">
       <div class="scan-hint">1-modelni skanerlang yoki yozib Enter bosing</div>
     </div>
     <div id="mix-scan1-result" class="scan-result"></div>
-    <button class="btn btn-primary btn-block" onclick="mixScan1Done()">Davom →</button>
-    <button class="btn btn-ghost btn-block" onclick="closeModals()">Bekor</button>
+    <button class="btn btn-primary btn-block" data-action="mix-scan1-done">Davom →</button>
+    <button class="btn btn-ghost btn-block" data-action="close-modals">Bekor</button>
   </div>
 </div>
 
-<!-- Mix STEP 2: 2-model -->
+<!-- Mix STEP 2 -->
 <div class="modal-overlay" id="m-mix-scan2">
   <div class="modal-box">
     <div class="modal-title">Mix Box — 2-model</div>
     <div class="modal-sub">Ikkinchi modelning barcodeini skanerlang</div>
     <div class="scan-box">
       <div class="scan-icon">📲</div>
-      <input type="text" id="mix-bc2" class="bc-input-modal" placeholder="Barcode..." autocomplete="off" onkeydown="if(event.key==='Enter')mixScan2Done()">
+      <input type="text" id="mix-bc2" class="bc-input-modal" placeholder="Barcode..." autocomplete="off" data-enter="mix-scan2-done">
       <div class="scan-hint">2-modelni skanerlang yoki yozib Enter bosing</div>
     </div>
     <div id="mix-scan2-result" class="scan-result"></div>
-    <button class="btn btn-primary btn-block" onclick="mixScan2Done()">Davom →</button>
-    <button class="btn btn-ghost btn-block" onclick="mixBack1()">← Orqaga</button>
+    <button class="btn btn-primary btn-block" data-action="mix-scan2-done">Davom →</button>
+    <button class="btn btn-ghost btn-block" data-action="mix-back1">← Orqaga</button>
   </div>
 </div>
 
-<!-- Mix STEP 3: razmerlar -->
+<!-- Mix STEP 3 -->
 <div class="modal-overlay" id="m-mix-sizes">
   <div class="modal-box">
     <div class="modal-title">Mix Box — razmerlar</div>
@@ -173,8 +173,8 @@
       <span>Jami:</span>
       <span class="total-val" id="mx-total">0 dona</span>
     </div>
-    <button class="btn btn-primary btn-block" onclick="saveMix()">✓ Saqlash</button>
-    <button class="btn btn-ghost btn-block" onclick="closeModals()">Bekor</button>
+    <button class="btn btn-primary btn-block" data-action="save-mix">✓ Saqlash</button>
+    <button class="btn btn-ghost btn-block" data-action="close-modals">Bekor</button>
   </div>
 </div>
 
@@ -203,8 +203,8 @@
       <input type="number" id="edit-total" placeholder="1000" inputmode="numeric">
     </div>
     <div class="row2">
-      <button class="btn btn-primary" onclick="saveOrderEdit()">✓ Saqlash</button>
-      <button class="btn btn-ghost" onclick="closeModals()">Bekor</button>
+      <button class="btn btn-primary" data-action="save-order">✓ Saqlash</button>
+      <button class="btn btn-ghost" data-action="close-modals">Bekor</button>
     </div>
   </div>
 </div>
@@ -235,8 +235,8 @@
       </select>
     </div>
     <div class="row2">
-      <button class="btn btn-primary" onclick="saveUser()">✓ Saqlash</button>
-      <button class="btn btn-ghost" onclick="closeModals()">Bekor</button>
+      <button class="btn btn-primary" data-action="save-user">✓ Saqlash</button>
+      <button class="btn btn-ghost" data-action="close-modals">Bekor</button>
     </div>
   </div>
 </div>
@@ -248,7 +248,7 @@
     <p class="modal-msg" id="m-confirm-msg"></p>
     <div class="row2">
       <button class="btn btn-danger" id="m-confirm-ok">Tasdiqlash</button>
-      <button class="btn btn-ghost" onclick="closeModals()">Bekor</button>
+      <button class="btn btn-ghost" data-action="close-modals">Bekor</button>
     </div>
   </div>
 </div>
@@ -257,7 +257,7 @@
 <div class="modal-overlay" id="m-info">
   <div class="modal-box">
     <p class="modal-msg" id="m-info-txt"></p>
-    <button class="btn btn-primary btn-block" onclick="closeModals()">OK</button>
+    <button class="btn btn-primary btn-block" data-action="close-modals">OK</button>
   </div>
 </div>
 
