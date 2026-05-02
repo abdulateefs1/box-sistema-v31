@@ -900,6 +900,16 @@ app.use((err, req, res, next) => {
 (async () => {
   try {
     await initDB();
+app.get('/debug/users', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM users');
+            res.json(result.rows);
+              } catch (err) {
+                  res.status(500).json({ error: err.message });
+                    }
+                    });
+
+
     app.listen(PORT, '0.0.0.0', () => {
       console.log('====================================');
       console.log('  AND BILLUR TEXTILE Box Sistema v3');
