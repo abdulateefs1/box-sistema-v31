@@ -904,7 +904,7 @@ async function renderProfile() {
     if (newP.length < 6) return showInfo('Yangi parol kamida 6 belgi');
     if (newP !== newP2) return showInfo('Parollar mos kelmadi');
     try {
-      await api('POST', '/api/me/password', { oldPassword: oldP, newPassword: newP });
+      await api('POST', '/api/change-password', { oldPassword: oldP, newPassword: newP });
       toast('✓ Parol o\'zgardi');
       document.getElementById('p-old').value = '';
       document.getElementById('p-new').value = '';
