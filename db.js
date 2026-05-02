@@ -65,6 +65,18 @@ async function initDB() {
   try {
     await client.query('BEGIN');
 
+    // 🔥 LOGIN ATTEMPTS TABLE
+      await pool.query(`
+          CREATE TABLE IF NOT EXISTS login_attempts (
+                id SERIAL PRIMARY KEY,
+                      ip TEXT,
+                            username TEXT,
+                                  success BOOLEAN,
+                                        at TIMESTAMP DEFAULT NOW()
+                                            )
+                                              `);
+                                              
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id          TEXT PRIMARY KEY,
