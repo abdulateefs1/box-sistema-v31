@@ -77,6 +77,12 @@ async function initDB() {
                                               `);
 
 
+    await pool.query(`
+    ALERT TABLE users
+    ADD COLUMN IF NOT EXISTS must_change_pwd
+    BOOLEAN DEFAULT FALSE
+    `);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id          TEXT PRIMARY KEY,
