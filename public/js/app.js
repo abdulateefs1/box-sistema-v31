@@ -409,6 +409,7 @@ async function saveMix() {
 
 // ============== BOXES ==============
 let boxesSelectedZakaz = '';
+let editingBox = null;
 
 async function renderBoxes() {
   const c = document.getElementById('page-content');
@@ -570,16 +571,84 @@ function renderBoxCard(b) {
 }
 
 function renderBoxActions(b) {
-  const delBtn = me.role === 'admin'
+  const editBtn = (me.role === 'admin' || me.role === 'storekeeper')
+    ? `<button class="btn btn-primary btn-sm" data-act="edit-box" data-uid="${esc(b.uid)}" style="margin-top:10px">✏️ Tahrirlash</button>`
+    : '';
+  const delBtn = (me.role === 'admin' || me.role === 'storekeeper')
     ? `<button class="btn btn-danger btn-sm" data-act="del-box" data-uid="${esc(b.uid)}" style="margin-top:10px;margin-left:6px">🗑 O'chirish</button>`
     : '';
   if (b.status === 'packed') {
-    return `<button class="btn btn-success btn-sm" data-act="to-warehouse" data-uid="${esc(b.uid)}" style="margin-top:10px">→ Omborga</button>${delBtn}`;
+    return `${editBtn}<button class="btn btn-success btn-sm" data-act="to-warehouse" data-uid="${esc(b.uid)}" style="margin-top:10px;margin-left:6px">→ Omborga</button>${delBtn}`;
   }
   if (b.status === 'warehouse') {
-    return `<button class="btn btn-ghost btn-sm" data-act="to-packed" data-uid="${esc(b.uid)}" style="margin-top:10px">← Qaytarish</button>${delBtn}`;
+    return `${editBtn}<button class="btn btn-ghost btn-sm" data-act="to-packed" data-uid="${esc(b.uid)}" style="margin-top:10px;margin-left:6px">← Qaytarish</button>${delBtn}`;
   }
-  return delBtn;
+  return `${editBtn}${delBtn}`;
+}
+
+function openBoxEdit(box) {
+  editingBox = box;
+  document.getElementById('be-uid').value = box.uid;
+  document.getElementById('be-boxnum').value = box.id;
+  document.getElementById('be-zakaz').value = box.zakaz || '';
+  document.getElementById('be-kg').value = box.kg || '';
+  document.getElementById('be-model-lbl').textContent = box.type === 'mix' ? '🎨 MIX box razmerlari' : `📐 ${box.model || ''} / ${box.color || ''}`;
+  const cont = document.getElementById('be-sizes');
+  cont.innerHTML = '';
+  if (box.type === 'mix') {
+    const first = (box.items || [])[0];
+    const itemSizes = first?.sizes || {};
+    SIZES.forEach(sz => {
+      const row = document.createElement('div');
+      row.className = 'si-row';
+      row.innerHTML = `<span class="si-label">${sz}</span><input type="number" class="si-input be-sz" data-size="${sz}" min="0" value="${itemSizes[sz] || ''}" inputmode="numeric" placeholder="0">`;
+      cont.appendChild(row);
+    });
+  } else {
+    SIZES.forEach(sz => {
+      const row = document.createElement('div');
+      row.className = 'si-row';
+      row.innerHTML = `<span class="si-label">${sz}</span><input type="number" class="si-input be-sz" data-size="${sz}" min="0" value="${(box.sizes || {})[sz] || ''}" inputmode="numeric" placeholder="0">`;
+      cont.appendChild(row);
+    });
+  }
+  const recalc = () => {
+    let t = 0;
+    document.querySelectorAll('.be-sz').forEach(i => { t += parseInt(i.value, 10) || 0; });
+    document.getElementById('be-total').textContent = `${t} dona`;
+  };
+  cont.oninput = recalc;
+  recalc();
+  openModal('m-box-edit');
+}
+
+async function saveBoxEdit() {
+  if (!editingBox) return;
+  const uid = document.getElementById('be-uid').value;
+  const zakaz = document.getElementById('be-zakaz').value.trim();
+  const kg = parseFloat(document.getElementById('be-kg').value);
+  if (!zakaz) return showInfo('Zakaz kerak');
+  if (!kg || kg <= 0) return showInfo('Og\'irlik kerak');
+  const sizes = {};
+  document.querySelectorAll('.be-sz').forEach(i => {
+    const v = parseInt(i.value, 10) || 0;
+    if (v > 0) sizes[i.dataset.size] = v;
+  });
+  if (!Object.keys(sizes).length) return showInfo('Kamida 1 ta razmer kiriting');
+  const body = { uid, zakaz, kg };
+  if (editingBox.type === 'mix') {
+    const first = (editingBox.items || [])[0];
+    body.items = [{ model: first?.model || '', color: first?.color || '', sizes }];
+  } else {
+    body.sizes = sizes;
+  }
+  try {
+    await api('PUT', '/api/boxes/_', body);
+    closeModals();
+    toast('✓ Box tahrirlandi');
+    if (currentTab === 'boxes') loadBoxes();
+    if (currentTab === 'shipments') renderShipments();
+  } catch (e) { showInfo(e.message); }
 }
 
 // ============== STATIC HTML BUTTON HANDLERS (CSP-safe, data-action) ==============
@@ -596,7 +665,8 @@ const ACTIONS = {
   'mix-scan2-done': mixScan2Done,
   'mix-back1': mixBack1,
   'save-order': saveOrderEdit,
-  'save-user': saveUser
+  'save-user': saveUser,
+  'save-box-edit': saveBoxEdit
 };
 
 document.addEventListener('click', (e) => {
@@ -685,6 +755,11 @@ document.addEventListener('click', async (e) => {
           if (currentTab === 'shipments') renderShipments();
         } catch (e) { showInfo(e.message); }
       });
+    } else if (act === 'edit-box') {
+      const all = await api('GET', '/api/boxes');
+      const box = all.find(x => x.uid === uid);
+      if (!box) return showInfo('Box topilmadi');
+      openBoxEdit(box);
     } else if (act === 'toggle-shp-hist') {
       const key = btn.dataset.key;
       const el = document.getElementById('shp-det-' + key);
@@ -738,48 +813,34 @@ async function loadDetalniy() {
       <span class="info-val">${whBoxes.length} ta (${whPieces} dona)</span>
     </div>` + html;
     html += '<tr>';
-    html += '<th rowspan="2">Model #</th><th rowspan="2">Color</th><th rowspan="2">Номер заказа</th><th rowspan="2">Спецификации</th><th colspan="' + SIZES.length + '">Размеры</th>';
-    html += '<th rowspan="2">Pcs per Carton</th><th rowspan="2">Num of Cartons</th><th rowspan="2">Total pcs</th><th rowspan="2">Multipack</th>';
-    html += '<th rowspan="2">Gross Ctn Wt Kgs</th><th rowspan="2">Net Ctn Wt Kgs</th><th rowspan="2">Total Gross Ctn Wt Kgs</th><th rowspan="2">Total Net Ctn Wt Kgs</th><th rowspan="2">Carton Size cm / in</th><th rowspan="2">m3</th>';
+    html += '<th rowspan="2">Model #</th><th rowspan="2">Color</th><th rowspan="2">Номер</th><th rowspan="2">Специфика</th><th colspan="' + SIZES.length + '">Размеры</th>';
     html += '</tr><tr>';
     SIZES.forEach(s => html += '<th>' + s + '</th>');
     html += '</tr></thead><tbody>';
-    const totals = { cartons: 0, totalPcs: 0, gross: 0, totalGross: 0, totalNet: 0, m3: 0 };
     groups.forEach(g => {
-      const pcsPerCarton = SIZES.reduce((s, sz) => s + (g.sizes[sz] || 0), 0);
-      const boxCount = g.boxes.length;
-      const totalPcs = pcsPerCarton * boxCount;
-      const gross = g.boxes.reduce((s, b) => s + (parseFloat(b.kg) || 0), 0);
-      const net = Math.max(0, gross - 1.2);
-      const totalGross = gross * boxCount;
-      const totalNet = net * boxCount;
-      const m3 = 0.61 * 0.41 * 0.41 * boxCount;
-      totals.cartons += boxCount;
-      totals.totalPcs += totalPcs;
-      totals.gross += gross;
-      totals.totalGross += totalGross;
-      totals.totalNet += totalNet;
-      totals.m3 += m3;
-      html += '<tr><td class="td-bold">' + esc(g.model) + '</td><td>' + esc(g.color) + '</td><td>' + esc(g.zakaz) + '</td><td></td>';
-      SIZES.forEach(sz => html += '<td>' + (g.sizes[sz] || '') + '</td>');
-      html += '<td class="td-bold">' + pcsPerCarton + '</td>';
-      html += '<td>' + boxCount + '</td>';
-      html += '<td class="td-bold">' + totalPcs + '</td>';
-      html += '<td>1</td>';
-      html += '<td>' + gross.toFixed(2) + '</td>';
-      html += '<td>' + net.toFixed(2) + '</td>';
-      html += '<td>' + totalGross.toFixed(2) + '</td>';
-      html += '<td>' + totalNet.toFixed(2) + '</td>';
-      html += '<td>60*40*40</td>';
-      html += '<td>' + m3.toFixed(3) + '</td></tr>';
+      const rows = (g.boxes || []).map(b => {
+        if (b.type === 'mix') {
+          const item = (b.items || []).find(it =>
+            String(it.model || '').trim().toLowerCase() === String(g.model || '').trim().toLowerCase() &&
+            String(it.color || '').trim().toLowerCase() === String(g.color || '').trim().toLowerCase()
+          );
+          return item?.sizes || {};
+        }
+        return b.sizes || {};
+      });
+      const spec = rows.length;
+      rows.forEach((rs, idx) => {
+        html += '<tr>';
+        if (idx === 0) {
+          html += `<td class="td-bold" rowspan="${spec}">${esc(g.model)}</td>`;
+          html += `<td class="td-bold" rowspan="${spec}">${esc(g.color)}</td>`;
+          html += `<td class="td-bold" rowspan="${spec}">${esc(g.zakaz)}</td>`;
+          html += `<td class="td-bold" rowspan="${spec}">${spec}</td>`;
+        }
+        SIZES.forEach(sz => html += `<td>${rs[sz] || ''}</td>`);
+        html += '</tr>';
+      });
     });
-    html += '<tr class="det-total-row"><td class="td-bold">JAMI</td><td></td><td></td><td></td>';
-    SIZES.forEach(sz => {
-      const sizeTotal = groups.reduce((s, g) => s + (g.sizes[sz] || 0), 0);
-      html += '<td class="td-bold">' + (sizeTotal || '') + '</td>';
-    });
-    html += '<td></td><td class="td-bold">' + totals.cartons + '</td><td class="td-bold">' + totals.totalPcs + '</td><td></td>';
-    html += '<td class="td-bold">' + totals.gross.toFixed(2) + '</td><td></td><td class="td-bold">' + totals.totalGross.toFixed(2) + '</td><td class="td-bold">' + totals.totalNet.toFixed(2) + '</td><td></td><td class="td-bold">' + totals.m3.toFixed(3) + '</td></tr>';
     html += '</tbody></table></div>';
     div.innerHTML = html;
   } catch (e) { toast(e.message); }

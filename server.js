@@ -455,6 +455,57 @@ app.post('/api/boxes', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.put('/api/boxes/:id', requireRole('admin', 'storekeeper'), async (req, res) => {
+  try {
+    const uid = sanitizeStr(req.body?.uid, 100);
+    if (!uid) return res.status(400).json({ error: 'uid kerak' });
+    const sel = await pool.query(`SELECT * FROM boxes WHERE uid = $1`, [uid]);
+    if (!sel.rows.length) return res.status(404).json({ error: 'Topilmadi' });
+    const box = sel.rows[0];
+
+    const zakaz = sanitizeStr(req.body?.zakaz, 50) || box.zakaz;
+    const kg = req.body?.kg !== undefined ? Math.max(0, parseFloat(req.body.kg) || 0) : (parseFloat(box.kg) || 0);
+
+    let sizes = box.sizes;
+    let items = box.items;
+    if (box.type === 'simple') {
+      const inSizes = req.body?.sizes;
+      if (!inSizes || typeof inSizes !== 'object') return res.status(400).json({ error: 'sizes kerak' });
+      const cleaned = {};
+      Object.keys(inSizes).forEach(k => {
+        const v = parseInt(inSizes[k], 10);
+        if (!isNaN(v) && v > 0) cleaned[k] = v;
+      });
+      if (!Object.keys(cleaned).length) return res.status(400).json({ error: 'Kamida 1 ta razmer kerak' });
+      sizes = cleaned;
+    } else {
+      const inItems = req.body?.items;
+      if (!Array.isArray(inItems) || inItems.length < 1) return res.status(400).json({ error: 'items kerak' });
+      const cleanedItems = [];
+      inItems.forEach(it => {
+        const m = sanitizeStr(it?.model, 100);
+        const c = sanitizeStr(it?.color, 100);
+        const s = {};
+        Object.entries(it?.sizes || {}).forEach(([k, q]) => {
+          const v = parseInt(q, 10);
+          if (!isNaN(v) && v > 0) s[k] = v;
+        });
+        if (m && c && Object.keys(s).length) cleanedItems.push({ model: m, color: c, sizes: s });
+      });
+      if (!cleanedItems.length) return res.status(400).json({ error: 'Mix model razmerlari kerak' });
+      items = cleanedItems;
+    }
+
+    await pool.query(
+      `UPDATE boxes SET zakaz=$1, kg=$2, sizes=$3, items=$4, updated_at=NOW() WHERE uid=$5`,
+      [zakaz, kg, sizes ? JSON.stringify(sizes) : null, items ? JSON.stringify(items) : null, uid]
+    );
+    await appendAudit('BOX_UPDATED', req.user, { uid, id: box.box_num, zakaz }, getClientIP(req));
+    const { rows } = await pool.query(`SELECT * FROM boxes WHERE uid = $1`, [uid]);
+    res.json(rowToBox(rows[0]));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.put('/api/boxes/:id/status', requireRole('admin', 'storekeeper'), async (req, res) => {
   try {
     const uid = sanitizeStr(req.body?.uid, 100);
@@ -512,7 +563,7 @@ app.post('/api/boxes/:id/undo', requireRole('admin', 'storekeeper'), async (req,
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/boxes/:id', requireRole('admin'), async (req, res) => {
+app.delete('/api/boxes/:id', requireRole('admin', 'storekeeper'), async (req, res) => {
   try {
     const uid = sanitizeStr(req.query?.uid, 100);
     const zakaz = sanitizeStr(req.query?.zakaz, 50);
