@@ -697,6 +697,24 @@ tr:hover td { background: #fafbfc; }
   margin-top: 2px;
 }
 
+.ship-history-details {
+  margin-top: 8px;
+  display: none;
+  border-top: 1px dashed #cbd5e1;
+  padding-top: 8px;
+}
+
+.ship-history-item {
+  padding: 6px 0;
+  font-size: 12px;
+  color: #334155;
+}
+
+.ship-history-sizes {
+  color: #64748b;
+  margin-top: 2px;
+}
+
 /* ============== INFO ROWS ============== */
 .info-row {
   display: flex;

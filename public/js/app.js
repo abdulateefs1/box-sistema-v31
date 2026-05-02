@@ -570,13 +570,16 @@ function renderBoxCard(b) {
 }
 
 function renderBoxActions(b) {
+  const delBtn = me.role === 'admin'
+    ? `<button class="btn btn-danger btn-sm" data-act="del-box" data-uid="${esc(b.uid)}" style="margin-top:10px;margin-left:6px">🗑 O'chirish</button>`
+    : '';
   if (b.status === 'packed') {
-    return `<button class="btn btn-success btn-sm" data-act="to-warehouse" data-uid="${esc(b.uid)}" style="margin-top:10px">→ Omborga</button>`;
+    return `<button class="btn btn-success btn-sm" data-act="to-warehouse" data-uid="${esc(b.uid)}" style="margin-top:10px">→ Omborga</button>${delBtn}`;
   }
   if (b.status === 'warehouse') {
-    return `<button class="btn btn-ghost btn-sm" data-act="to-packed" data-uid="${esc(b.uid)}" style="margin-top:10px">← Qaytarish</button>`;
+    return `<button class="btn btn-ghost btn-sm" data-act="to-packed" data-uid="${esc(b.uid)}" style="margin-top:10px">← Qaytarish</button>${delBtn}`;
   }
-  return '';
+  return delBtn;
 }
 
 // ============== STATIC HTML BUTTON HANDLERS (CSP-safe, data-action) ==============
@@ -673,6 +676,22 @@ document.addEventListener('click', async (e) => {
         try { await api('DELETE', '/api/shipments/' + encodeURIComponent(id)); toast('✓ Shipment o\'chirildi'); renderShipments(); }
         catch (e) { showInfo(e.message); }
       });
+    } else if (act === 'del-box') {
+      showConfirm('Boxni o\'chirish', 'Boxni o\'chirishni tasdiqlaysizmi?', async () => {
+        try {
+          await api('DELETE', '/api/boxes/_?uid=' + encodeURIComponent(uid));
+          toast('✓ Box o\'chirildi');
+          if (currentTab === 'boxes') loadBoxes();
+          if (currentTab === 'shipments') renderShipments();
+        } catch (e) { showInfo(e.message); }
+      });
+    } else if (act === 'toggle-shp-hist') {
+      const key = btn.dataset.key;
+      const el = document.getElementById('shp-det-' + key);
+      if (!el) return;
+      const open = el.style.display === 'block';
+      el.style.display = open ? 'none' : 'block';
+      btn.textContent = open ? 'Ko\'rish' : 'Yopish';
     }
   } catch (err) { showInfo(err.message); }
 });
@@ -789,6 +808,34 @@ async function downloadDetalniyExcel() {
 }
 
 // ============== SHIPMENTS ==============
+function aggregateShipmentSnapshot(snapshot) {
+  const groups = {};
+  const add = (model, color, boxUid, sizes) => {
+    const key = `${String(model || '').trim().toLowerCase()}|${String(color || '').trim().toLowerCase()}`;
+    if (!groups[key]) groups[key] = { model: String(model || '').trim(), color: String(color || '').trim(), boxMap: {}, sizes: {} };
+    groups[key].boxMap[String(boxUid || '')] = true;
+    Object.entries(sizes || {}).forEach(([sz, q]) => {
+      const v = parseInt(q, 10) || 0;
+      if (v > 0) groups[key].sizes[sz] = (groups[key].sizes[sz] || 0) + v;
+    });
+  };
+  (snapshot || []).forEach(b => {
+    if (b.type === 'mix') {
+      (b.items || []).forEach(it => add(it.model, it.color, b.uid || `${b.zakaz}-${b.id}`, it.sizes));
+    } else {
+      add(b.model, b.color, b.uid || `${b.zakaz}-${b.id}`, b.sizes);
+    }
+  });
+  return Object.values(groups).map(g => {
+    const sizesTxt = Object.keys(g.sizes)
+      .sort((a, b) => parseInt(a, 10) - parseInt(b, 10))
+      .map(sz => `${sz}:${g.sizes[sz]}`)
+      .join(' · ');
+    const total = Object.values(g.sizes).reduce((s, q) => s + q, 0);
+    return { model: g.model, color: g.color, boxCount: Object.keys(g.boxMap).length, total, sizesTxt };
+  });
+}
+
 async function renderShipments() {
   const c = document.getElementById('page-content');
   c.innerHTML = `<div id="shp-content">Yuklanmoqda...</div>`;
@@ -803,7 +850,7 @@ async function renderShipments() {
       <div class="card">
         <div class="section-title">🕓 Shipment tarixi (${closedShipments.length})</div>
         <div id="shp-history" style="margin-top:10px">
-          ${closedShipments.length ? closedShipments.map(s => {
+          ${closedShipments.length ? closedShipments.map((s, i) => {
             const snap = Array.isArray(s.snapshot) ? s.snapshot : [];
             const pcs = snap.reduce((sum, b) => {
               const t = b.type === 'mix'
@@ -813,11 +860,17 @@ async function renderShipments() {
             }, 0);
             const kg = snap.reduce((sum, b) => sum + (parseFloat(b.kg) || 0), 0);
             const dt = s.closedAt ? new Date(s.closedAt).toLocaleString('uz-UZ') : '—';
+            const rows = aggregateShipmentSnapshot(snap);
+            const details = rows.length
+              ? rows.map(r => `<div class="ship-history-item"><div><strong>${esc(r.model)} / ${esc(r.color)}</strong> — ${r.boxCount} box · ${r.total} dona</div><div class="ship-history-sizes">${esc(r.sizesTxt || '—')}</div></div>`).join('')
+              : `<div class="ship-history-item">Ma'lumot yo'q</div>`;
             return `<div class="ship-history-row">
               <div>
                 <div class="ship-history-title">${esc(s.id)} · ${snap.length} box</div>
                 <div class="ship-history-sub">${dt} · ${kg.toFixed(1)} kg · ${pcs} dona</div>
+                <div id="shp-det-${i}" class="ship-history-details">${details}</div>
               </div>
+              <button class="btn btn-ghost btn-sm" data-act="toggle-shp-hist" data-key="${i}">Ko'rish</button>
             </div>`;
           }).join('') : '<p style="text-align:center;color:#94a3b8;padding:14px">Hali yopilgan shipment yo\'q</p>'}
         </div>
@@ -1079,18 +1132,37 @@ async function saveUser() {
 // ============== AUDIT ==============
 async function renderAudit() {
   const c = document.getElementById('page-content');
-  c.innerHTML = `<div class="card"><div class="section-title">📜 Audit log</div><div id="audit-list" style="margin-top:10px">Yuklanmoqda...</div></div>`;
+  c.innerHTML = `<div class="card">
+    <div class="section-title">📜 Audit log</div>
+    <div class="row2" style="margin-top:12px">
+      <input type="text" id="a-user" placeholder="Qidiruv user">
+      <input type="text" id="a-action" placeholder="Qidiruv action">
+    </div>
+    <div id="audit-list" style="margin-top:10px">Yuklanmoqda...</div>
+  </div>`;
   try {
     const list = await api('GET', '/api/audit-logs');
     const div = document.getElementById('audit-list');
-    if (!list.length) { div.innerHTML = '<p style="text-align:center;color:#94a3b8;padding:20px">Hech narsa yo\'q</p>'; return; }
-    let html = '<div style="overflow-x:auto"><table><thead><tr><th>Vaqt</th><th>Amal</th><th>Kim</th><th>IP</th><th>Detal</th></tr></thead><tbody>';
-    list.forEach(l => {
-      const dt = new Date(l.at).toLocaleString('uz-UZ');
-      html += '<tr><td style="font-size:11px">' + esc(dt) + '</td><td><span class="badge b-blue">' + esc(l.type) + '</span></td><td>' + esc(l.by_name || l.by_user) + '</td><td style="font-family:monospace;font-size:11px">' + esc(l.ip || '—') + '</td><td style="font-size:11px;color:#64748b">' + esc(JSON.stringify(l.details || {})) + '</td></tr>';
-    });
-    html += '</tbody></table></div>';
-    div.innerHTML = html;
+    const renderList = () => {
+      const uq = (document.getElementById('a-user').value || '').trim().toLowerCase();
+      const aq = (document.getElementById('a-action').value || '').trim().toLowerCase();
+      const filtered = list.filter(l => {
+        const byTxt = `${l.by_name || ''} ${l.by_user || ''}`.toLowerCase();
+        const actTxt = String(l.type || '').toLowerCase();
+        return (!uq || byTxt.includes(uq)) && (!aq || actTxt.includes(aq));
+      });
+      if (!filtered.length) { div.innerHTML = '<p style="text-align:center;color:#94a3b8;padding:20px">Mos audit topilmadi</p>'; return; }
+      let html = '<div style="overflow-x:auto"><table><thead><tr><th>Vaqt</th><th>Amal</th><th>Kim</th><th>IP</th><th>Detal</th></tr></thead><tbody>';
+      filtered.forEach(l => {
+        const dt = new Date(l.at).toLocaleString('uz-UZ');
+        html += '<tr><td style="font-size:11px">' + esc(dt) + '</td><td><span class="badge b-blue">' + esc(l.type) + '</span></td><td>' + esc(l.by_name || l.by_user) + '</td><td style="font-family:monospace;font-size:11px">' + esc(l.ip || '—') + '</td><td style="font-size:11px;color:#64748b">' + esc(JSON.stringify(l.details || {})) + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+      div.innerHTML = html;
+    };
+    document.getElementById('a-user').addEventListener('input', renderList);
+    document.getElementById('a-action').addEventListener('input', renderList);
+    renderList();
   } catch (e) { toast(e.message); }
 }
 
