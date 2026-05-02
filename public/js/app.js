@@ -922,5 +922,16 @@ async function renderProfile() {
       if (r.user) { me = r.user; showApp(); return; }
     } catch {}
   }
+
   showLogin();
+  document.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+
+          if (btn.dataset.action === 'login') {
+              e.preventDefault();
+                  doLogin();
+                    }
+                    });
+  })
 })();
