@@ -742,7 +742,11 @@ document.addEventListener('click', async (e) => {
       loadBoxes();
     } else if (act === 'del-shipment') {
       const id = btn.dataset.id;
-      showConfirm('Shipmentni o\'chirish', `${id} shipmentini o\'chirasizmi?`, async () => {
+      const st = btn.dataset.shipmentStatus || '';
+      const body = st === 'closed'
+        ? `${id}: tarix yozuvini o\'chirasizmi? Yuborilgan boxlar holati o\'zgarmaydi.`
+        : `${id}: ochiq shipment o\'chiriladi; shipmentdagi boxlar omborga qaytadi.`;
+      showConfirm('Shipmentni o\'chirish', body, async () => {
         try { await api('DELETE', '/api/shipments/' + encodeURIComponent(id)); toast('✓ Shipment o\'chirildi'); renderShipments(); }
         catch (e) { showInfo(e.message); }
       });
@@ -925,13 +929,17 @@ async function renderShipments() {
             const details = rows.length
               ? rows.map(r => `<div class="ship-history-item"><div><strong>${esc(r.model)} / ${esc(r.color)}</strong> — ${r.boxCount} box · ${r.total} dona</div><div class="ship-history-sizes">${esc(r.sizesTxt || '—')}</div></div>`).join('')
               : `<div class="ship-history-item">Ma'lumot yo'q</div>`;
+            const histBtns = `<div class="ship-history-actions">
+                <button type="button" class="btn btn-ghost btn-sm" data-act="toggle-shp-hist" data-key="${i}">Ko'rish</button>
+                ${me.role === 'admin' ? `<button type="button" class="btn btn-danger btn-sm" data-act="del-shipment" data-id="${esc(s.id)}" data-shipment-status="closed" title="Tarixdan o'chirish">🗑</button>` : ''}
+              </div>`;
             return `<div class="ship-history-row">
               <div>
                 <div class="ship-history-title">${esc(s.id)} · ${snap.length} box</div>
                 <div class="ship-history-sub">${dt} · ${kg.toFixed(1)} kg · ${pcs} dona</div>
                 <div id="shp-det-${i}" class="ship-history-details">${details}</div>
               </div>
-              <button class="btn btn-ghost btn-sm" data-act="toggle-shp-hist" data-key="${i}">Ko'rish</button>
+              ${histBtns}
             </div>`;
           }).join('') : '<p style="text-align:center;color:#94a3b8;padding:14px">Hali yopilgan shipment yo\'q</p>'}
         </div>
@@ -975,7 +983,7 @@ async function renderShipments() {
         <div class="info-row"><span class="info-lbl">Boxlar</span><span class="info-val">${inShp.length} ta</span></div>
         <div class="info-row"><span class="info-lbl">Og'irlik</span><span class="info-val">${total.toFixed(1)} kg</span></div>
         <button class="btn btn-success btn-block" id="close-shp" style="margin-top:12px">✓ Shipmentni yopish</button>
-        ${me.role === 'admin' ? `<button class="btn btn-danger btn-block" data-act="del-shipment" data-id="${esc(open.id)}" style="margin-top:8px">🗑 Shipmentni o'chirish (Admin)</button>` : ''}
+        ${me.role === 'admin' ? `<button class="btn btn-danger btn-block" data-act="del-shipment" data-id="${esc(open.id)}" data-shipment-status="open" style="margin-top:8px">🗑 Shipmentni o'chirish (Admin)</button>` : ''}
       </div>
       <div class="card">
         <div class="section-title">📦 Shipmentdagi boxlar (${inShp.length})</div>
